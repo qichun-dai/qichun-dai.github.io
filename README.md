@@ -1,3 +1,3 @@
-# Begin Here
+# Qichun's Projects
 
-Begin Here - a dating coaching service for serious daters.
+This site lists the projects I have been working on.
