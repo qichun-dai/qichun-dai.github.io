@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <title>Camino</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
+      crossorigin="anonymous"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+  </head>
+  <body>
+    <div id="container">
+      <div id="right-panel">
+        <div id="left-panel">
+          <div>
+            <h1>Qichun 3.0</h1>
+            <p>
+              I turned 30 this year. It’s a moment to pause, reflect, and embrace
+              the journey of my life so far. This project captures my 110 km pilgrimage.
+            </p>
+          </div>
+          <div>
+            <p id="date_description">
+              The only impossible journey is the one you never begin.
+            </p>
+            <div id="photo_container">
+              <img
+                id="photo_update"
+                src="./img/camino.webp"
+                alt="Description of the image"
+                class="horizontal"
+              />
+            </div>
+          </div>
+        </div>
+        <div id="map"></div>
+        <p id="date_text"></p>
+        <p id="time_text"></p>
+        <button id="start">Start the Journey</button>
+      </div>
+      
+    </div>
+
+    <script>
+      const file_path = "./data/combined_data.json";
+      console.log(file_path);
+      const map = L.map("map").setView(
+        [42.78037827960857, -7.414724446487067],
+        13
+      );
+
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+        {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: "abcd",
+          maxZoom: 19,
+        }
+      ).addTo(map);
+
+      let polygon = L.polyline([], { color: "#FFD700" }).addTo(map);
+      let drawInterval = null;
+      let isDrawing = false;
+      let nextIdx = 0;
+
+      // Create a custom icon for the marker
+      const profileIcon = L.divIcon({
+        html: `<img src="./img/marker.jpeg" class="profile-icon" />`, // Replace with the path to your profile picture
+        className: "", // Remove default icon styling
+        iconSize: [30, 30], // Adjust the size as needed
+        iconAnchor: [15, 15], // Anchor the icon at the center
+        popupAnchor: [0, -15], // Position the popup above the icon
+      });
+
+      // Add the marker to the map
+      const initialLat = 42.78037827960857;
+      const initialLon = -7.414724446487067;
+      const profileMarker = L.marker([initialLat, initialLon], {
+        icon: profileIcon,
+      }).addTo(map);
+
+       // Shift the map center 25% to the right
+       const offsetX = map.getSize().x * 0.2; // 25% of the map width
+      const currentCenter = map.latLngToContainerPoint([initialLat, initialLon]);
+      const newCenter = map.containerPointToLatLng([currentCenter.x - offsetX, currentCenter.y]);
+      map.setView(newCenter, 13);
+
+      async function readData() {
+        const response = await fetch(file_path);
+        const path = await response.json();
+        console.log(path);
+        return path;
+      }
+
+      const dayTextMapping = {
+        1: {
+          text: "Day 1: Sarria to Portomarín",
+          distance: "23.0km",
+          description: "Starting the journey from Sarria to Portomarín.",
+        },
+        2: {
+          text: "Day 2: Portomarín to Palas de Rei",
+          distance: "26.9km",
+          description:
+            "It is the longest stage and the weather is bad. I am soaked at the end of the day.",
+        },
+        3: {
+          text: "Day 3: Palas de Rei to Melide",
+          distance: "15.8km",
+          description:
+            "The weather is better today. It's relaxing to only walk 15 km.",
+        },
+        4: {
+          text: "Day 4: Melide to Arzúa",
+          distance: "15.2km",
+          description: "Found a nice coffee place in Melide. Perfect start of the day",
+        },
+        5: {
+          text: "Day 5: Azúa to O Pedrouzo",
+          distance: "20.9km",
+          description: "Feels a bit sad that it's approaching the end.",
+        },
+        6: {
+          text: "Day 6: Arriving at Santiago de Compostela",
+          distance: "20.4km",
+          description:
+            "Arriving at the final destination - Santiago de Compostela.",
+        },
+      };
+
+      async function fetchImageMetadata() {
+        const response = await fetch("./img/metadata.json");
+        const metadata = await response.json();
+        return metadata;
+      }
+
+      let LastIndex = 0; // Keep track of the last index to avoid searching from the beginning
+
+      async function main() {
+        console.log("LastIndex1:", LastIndex);
+        const path = await readData();
+        const imageMetadata = await fetchImageMetadata();
+
+        // Clear the existing polygon only if starting from the beginning
+        if (nextIdx === 0) {
+          if (polygon) {
+            map.removeLayer(polygon);
+          }
+          polygon = L.polyline([], { color: "#FFD700" }).addTo(map);
+        }
+
+        // Clear any existing interval
+        if (drawInterval) {
+          clearInterval(drawInterval);
+        }
+
+        drawInterval = setInterval(() => {
+          if (nextIdx >= path.length) {
+            clearInterval(drawInterval);
+            return;
+          }
+
+          let point = path[nextIdx];
+          if (point.gps && point.gps.lat && point.gps.lon) {
+            let lat = parseFloat(point.gps.lat);
+            let lon = parseFloat(point.gps.lon);
+            let time = new Date(point.time);
+
+             // Calculate the offset for shifting the map center to the right
+        const offsetX = map.getSize().x * 0.2; // 20% of the map width
+        const currentCenter = map.latLngToContainerPoint([lat, lon]);
+        const newCenter = map.containerPointToLatLng([currentCenter.x - offsetX, currentCenter.y]);
+            
+
+        map.setView(newCenter, 13);
+        polygon.addLatLng([lat, lon]);
+
+            // Update the marker's position
+            profileMarker.setLatLng([lat, lon]);
+
+            // Define the start date
+            const startDate = new Date("2024-10-18");
+
+            // Calculate the difference in days from the start date
+            const dayNumber =
+              Math.floor((time - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+            document.getElementById(
+              "time_text"
+            ).textContent = `${time.toDateString()} ${time.toLocaleTimeString()}`;
+
+            // Update the date_text based on the day number
+            if (dayTextMapping[dayNumber]) {
+              document.getElementById(
+                "date_text"
+              ).textContent = `${dayTextMapping[dayNumber].text} (${dayTextMapping[dayNumber].distance})`;
+              document.getElementById(
+                "date_description"
+              ).textContent = `${dayTextMapping[dayNumber].description}`;
+            } else {
+              document.getElementById(
+                "date_text"
+              ).textContent = `Day ${dayNumber}`;
+            }
+
+            console.log(imageMetadata);
+
+            // Update the photo based on the time
+            let matchingImage = null;
+
+            for (let i = LastIndex; i < imageMetadata.length; i++) {
+              const imageTime = new Date(imageMetadata[i].creationTime);
+              // console.log("Comparing times:", time, imageTime);
+
+              if (imageTime >= time && Math.abs(time - imageTime) <= 60000) {
+                // 60 seconds
+                matchingImage = imageMetadata[i];
+                LastIndex = i + 1;
+                console.log("LastIndex:", LastIndex);
+                break; // Exit the loop once the first matching image is found
+              }
+            }
+
+            if (matchingImage) {
+              const photoUpdate = document.getElementById("photo_update");
+              photoUpdate.src = `./img/updates/${matchingImage.fileName}`;
+              photoUpdate.className = matchingImage.orientation;
+              // Add a marker with the image in the tooltip
+              const customIcon = L.divIcon({
+                html: `<img src="./img/shell_icon.jpg" class="circle-icon" />`, // Replace with the path to your custom marker image
+                className: "", // Remove default icon styling
+                iconSize: [30, 30], // Adjust the size as needed
+                iconAnchor: [15, 30], // Anchor the icon at the bottom center
+                popupAnchor: [0, -30] // Position the popup above the icon
+              });
+              const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
+              marker
+                .bindTooltip(
+                  `<img src="./img/updates/${matchingImage.fileName}" alt="Image" width="100" />`
+                )
+                
+                
+            } else {
+              console.log("No matching image found for time:", time);
+            }
+          }
+
+          ++nextIdx;
+        }, 2);
+      }
+
+      document.getElementById("start").addEventListener("click", () => {
+        const startButton = document.getElementById("start");
+        if (isDrawing) {
+          clearInterval(drawInterval);
+          startButton.textContent = "Resume the Journey";
+        } else {
+          main();
+          startButton.textContent = "Take a Break";
+        }
+        isDrawing = !isDrawing;
+      });
+    </script>
+  </body>
+</html>
